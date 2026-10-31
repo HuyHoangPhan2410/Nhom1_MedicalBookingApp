@@ -42,13 +42,13 @@ class PaymentServiceTest {
     void testConfirmPayment_Success() {
         ConfirmPaymentRequest req = new ConfirmPaymentRequest();
         req.setAppointmentId(10);
-        req.setPaymentMethod("momo");
+        req.setPaymentMethod("cash");
 
         Map<String, Object> procRes = new HashMap<>();
         procRes.put("p_is_success", true);
         procRes.put("p_message", "Thanh toán thành công");
 
-        when(appointmentRepository.spConfirmPayment(10, "momo")).thenReturn(procRes);
+        when(appointmentRepository.spConfirmPayment(10, "cash")).thenReturn(procRes);
 
         Payment payment = createDummyPayment(10, Payment.Status.success);
         when(paymentRepository.findByAppointmentId(10)).thenReturn(Optional.of(payment));

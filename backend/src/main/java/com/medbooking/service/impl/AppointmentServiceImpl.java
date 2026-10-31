@@ -154,19 +154,20 @@ public class AppointmentServiceImpl implements AppointmentService {
             return;
         }
 
-        eventPublisher.publishEvent(new AppointmentBookedEvent(
-                appointment.getId(),
-                appointment.getPatient().getUser().getEmail(),
-                appointment.getPatient().getFullName(),
-                appointment.getDoctor().getFullName(),
-                appointment.getDoctor().getSpecialty().getName(),
-                appointment.getSchedule().getWorkDate(),
-                appointment.getSchedule().getStartTime(),
-                appointment.getSchedule().getEndTime(),
-                appointment.getSymptoms(),
-                appointment.getStatus().name(),
-                appointment.getDoctor().getConsultationFee()
-        ));
+        // Builder (Creational) assembles an event with many optional fields safely.
+        eventPublisher.publishEvent(AppointmentBookedEvent.builder()
+                .appointmentId(appointment.getId())
+                .recipientEmail(appointment.getPatient().getUser().getEmail())
+                .patientName(appointment.getPatient().getFullName())
+                .doctorName(appointment.getDoctor().getFullName())
+                .specialtyName(appointment.getDoctor().getSpecialty().getName())
+                .workDate(appointment.getSchedule().getWorkDate())
+                .startTime(appointment.getSchedule().getStartTime())
+                .endTime(appointment.getSchedule().getEndTime())
+                .symptoms(appointment.getSymptoms())
+                .status(appointment.getStatus().name())
+                .consultationFee(appointment.getDoctor().getConsultationFee())
+                .build());
     }
 
     private AppointmentResponse mapToResponse(Appointment app) {

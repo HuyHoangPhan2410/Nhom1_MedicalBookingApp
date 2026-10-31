@@ -41,6 +41,14 @@ public class PaymentController {
         return ApiResponse.success("Tạo PaymentIntent thành công", result);
     }
 
+    // Strategy: preparation can select cash or card; never marks payment as successful.
+    @PostMapping("/prepare")
+    public ApiResponse<Map<String, Object>> preparePayment(
+            @RequestParam Integer appointmentId, @RequestParam String method) {
+        return ApiResponse.success("Chuẩn bị thanh toán thành công",
+                paymentService.preparePayment(appointmentId, method));
+    }
+
     // ✅ MỚI: Lấy Stripe Publishable Key
     @GetMapping("/stripe-config")
     public ApiResponse<Map<String, String>> getStripeConfig() {

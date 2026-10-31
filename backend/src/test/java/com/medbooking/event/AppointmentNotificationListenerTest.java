@@ -1,6 +1,7 @@
 package com.medbooking.event;
 
 import com.medbooking.service.AppointmentEmailService;
+import com.medbooking.patterns.notification.EmailBookingNotificationCreator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +26,7 @@ class AppointmentNotificationListenerTest {
     @DisplayName("Listener g\u1eedi email x\u00e1c nh\u1eadn sau khi nh\u1eadn s\u1ef1 ki\u1ec7n \u0111\u1eb7t l\u1ecbch")
     void listenerSendsConfirmationEmail() {
         AppointmentBookedEvent event = createEvent();
-        AppointmentNotificationListener listener = new AppointmentNotificationListener(appointmentEmailService);
+        AppointmentNotificationListener listener = new AppointmentNotificationListener(new EmailBookingNotificationCreator(appointmentEmailService));
 
         listener.handleAppointmentBooked(event);
 
@@ -36,7 +37,7 @@ class AppointmentNotificationListenerTest {
     @DisplayName("L\u1ed7i g\u1eedi email kh\u00f4ng l\u00e0m l\u1ed7i lu\u1ed3ng \u0111\u1eb7t l\u1ecbch \u0111\u00e3 commit")
     void listenerDoesNotPropagateMailFailure() {
         AppointmentBookedEvent event = createEvent();
-        AppointmentNotificationListener listener = new AppointmentNotificationListener(appointmentEmailService);
+        AppointmentNotificationListener listener = new AppointmentNotificationListener(new EmailBookingNotificationCreator(appointmentEmailService));
         doThrow(new IllegalStateException("SMTP unavailable"))
                 .when(appointmentEmailService).sendBookingConfirmation(event);
 
