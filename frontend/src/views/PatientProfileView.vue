@@ -70,7 +70,6 @@
       v-if="showPaymentModal" 
       :appointment="selectedAppointment"
       @close="showPaymentModal = false"
-      @success="fetchData"
     />
 
     <!-- Reschedule Modal -->
@@ -78,19 +77,20 @@
       v-if="showRescheduleModal" 
       :appointment="selectedAppointment"
       @close="showRescheduleModal = false"
-      @success="fetchData"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import api from '../api/axios';
+import { useContainer } from '../core/container';
+import { EVENTS } from '../patterns/behavioral/EventBus';
 import AppointmentCard from '../components/AppointmentCard.vue';
 import PaymentModal from '../components/PaymentModal.vue';
 import RescheduleModal from '../components/RescheduleModal.vue';
 
+const { facade, bus, notifier } = useContainer();
 const authStore = useAuthStore();
 const patient = ref(null);
 const appointments = ref([]);
@@ -105,12 +105,9 @@ const fetchData = async () => {
   if (!authStore.user?.userId) return;
   loading.value = true;
   try {
-    const [patRes, appRes] = await Promise.all([
-      api.get(`/api/patients/${authStore.user.userId}`),
-      api.get(`/api/patients/${authStore.user.userId}/appointments`)
-    ]);
-    if (patRes.status === 200) patient.value = patRes.data;
-    if (appRes.status === 200) appointments.value = appRes.data;
+    const overview = await facade.loadPatientOverview(authStore.user.userId);
+    patient.value = overview.patient;
+    appointments.value = overview.appointments;
   } catch (err) {
     console.error(err);
   } finally {
@@ -119,6 +116,13 @@ const fetchData = async () => {
 };
 
 onMounted(fetchData);
+
+// Observer: tự tải lại danh sách khi có đặt/hủy/đổi lịch hoặc thanh toán (không cần modal emit lên).
+const unsubscribers = [
+  EVENTS.APPOINTMENT_BOOKED, EVENTS.APPOINTMENT_CANCELLED,
+  EVENTS.APPOINTMENT_RESCHEDULED, EVENTS.PAYMENT_COMPLETED
+].map((event) => bus.subscribe(event, fetchData));
+onUnmounted(() => unsubscribers.forEach((off) => off()));
 
 const filteredAppointments = computed(() => {
   if (activeFilter.value === 'all') return appointments.value;
@@ -136,14 +140,11 @@ const openRescheduleModal = (app) => {
 };
 
 const handleCancel = async (appointmentId) => {
-  if (!confirm('Bạn có chắc chắn muốn hủy lịch hẹn này?')) return;
+  if (!notifier.confirm('Bạn có chắc chắn muốn hủy lịch hẹn này?')) return;
   try {
-    const res = await api.put(`/api/appointments/${appointmentId}/cancel`);
-    if (res.status === 200) {
-      await fetchData();
-    }
+    await facade.cancelAppointment(appointmentId);
   } catch (err) {
-    alert(err.message);
+    notifier.error(err.message);
   }
 };
 

@@ -138,7 +138,6 @@
     <CreateScheduleModal 
       v-if="showCreateModal" 
       @close="showCreateModal = false" 
-      @success="fetchData"
     />
 
     <!-- Modal Chỉnh Sửa Ca Khám -->
@@ -146,18 +145,19 @@
       v-if="selectedScheduleToEdit" 
       :schedule="selectedScheduleToEdit"
       @close="selectedScheduleToEdit = null" 
-      @success="fetchData"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import api from '../api/axios';
+import { useContainer } from '../core/container';
+import { EVENTS } from '../patterns/behavioral/EventBus';
 import CreateScheduleModal from '../components/CreateScheduleModal.vue';
 import EditScheduleModal from '../components/EditScheduleModal.vue';
 
+const { facade, bus, notifier } = useContainer();
 const authStore = useAuthStore();
 
 const doctor = ref(null);
@@ -171,14 +171,10 @@ const fetchData = async () => {
   if (!authStore.user?.userId) return;
   const doctorId = authStore.user.userId;
   try {
-    const [docRes, appRes, schedRes] = await Promise.all([
-      api.get(`/api/doctors/${doctorId}`),
-      api.get(`/api/appointments/doctor/${doctorId}`),
-      api.get(`/api/schedules/doctor/${doctorId}`)
-    ]);
-    if (docRes.status === 200) doctor.value = docRes.data;
-    if (appRes.status === 200) appointments.value = appRes.data;
-    if (schedRes.status === 200) schedules.value = schedRes.data;
+    const portal = await facade.loadDoctorPortal(doctorId);
+    doctor.value = portal.doctor;
+    appointments.value = portal.appointments;
+    schedules.value = portal.schedules;
   } catch (err) {
     console.error(err);
   } finally {
@@ -188,21 +184,20 @@ const fetchData = async () => {
 
 onMounted(fetchData);
 
+// Observer: tạo/sửa/hủy ca khám xong thì bảng tuần tự cập nhật.
+const offScheduleChanged = bus.subscribe(EVENTS.SCHEDULE_CHANGED, fetchData);
+onUnmounted(offScheduleChanged);
+
 const openEditModal = (sched) => {
   selectedScheduleToEdit.value = sched;
 };
 
 const handleCancelSchedule = async (scheduleId) => {
-  if (!confirm('Bạn có chắc chắn muốn hủy ca khám này không? Các lịch khám chưa thanh toán sẽ bị hủy.')) return;
+  if (!notifier.confirm('Bạn có chắc chắn muốn hủy ca khám này không? Các lịch khám chưa thanh toán sẽ bị hủy.')) return;
   try {
-    const res = await api.delete(`/api/schedules/${scheduleId}`, {
-      params: { doctorId: authStore.user.userId }
-    });
-    if (res.status === 200) {
-      await fetchData();
-    }
+    await facade.cancelSchedule(scheduleId, authStore.user.userId);
   } catch (err) {
-    alert(err.message);
+    notifier.error(err.message);
   }
 };
 

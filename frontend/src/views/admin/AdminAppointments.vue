@@ -42,13 +42,15 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+
+const { adminApi, notifier } = useContainer();
 
 const appointments = ref([]);
 const filter = ref('all');
 
 const fetchAppointments = async () => {
-  const res = await api.get('/api/admin/appointments');
+  const res = await adminApi.listAppointments();
   if (res.status === 200) appointments.value = res.data;
 };
 onMounted(fetchAppointments);
@@ -61,9 +63,9 @@ const filtered = computed(() => {
 const updateStatus = async (id, status) => {
   if (!status) return;
   try {
-    await api.put(`/api/admin/appointments/${id}/status`, { status });
+    await adminApi.updateAppointmentStatus(id, status);
     await fetchAppointments();
-  } catch (e) { alert(e.message); }
+  } catch (e) { notifier.error(e.message); }
 };
 
 const statusText = (s) => ({ pending: 'Chờ TT', confirmed: 'Xác nhận', cancelled: 'Đã hủy', completed: 'Hoàn thành' }[s] || s);

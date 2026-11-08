@@ -53,7 +53,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+
+const { adminApi, notifier } = useContainer();
 
 const doctors = ref([]);
 const specialties = ref([]);
@@ -64,8 +66,8 @@ const form = ref({ fullName: '', email: '', password: '', specialtyId: 1, experi
 
 const fetchData = async () => {
   const [docRes, specRes] = await Promise.all([
-    api.get('/api/admin/doctors'),
-    api.get('/api/admin/specialties')
+    adminApi.listDoctors(),
+    adminApi.listSpecialties()
   ]);
   if (docRes.status === 200) doctors.value = docRes.data;
   if (specRes.status === 200) specialties.value = specRes.data;
@@ -79,9 +81,9 @@ const handleSave = async () => {
   errorMsg.value = '';
   try {
     if (editingId.value) {
-      await api.put(`/api/admin/doctors/${editingId.value}`, form.value);
+      await adminApi.updateDoctor(editingId.value, form.value);
     } else {
-      await api.post('/api/admin/doctors', form.value);
+      await adminApi.createDoctor(form.value);
     }
     showModal.value = false;
     await fetchData();
@@ -89,8 +91,8 @@ const handleSave = async () => {
 };
 
 const handleDelete = async (d) => {
-  if (!confirm(`Xóa bác sĩ ${d.fullName}?`)) return;
-  try { await api.delete(`/api/admin/doctors/${d.userId}`); await fetchData(); } catch (e) { alert(e.message); }
+  if (!notifier.confirm(`Xóa bác sĩ ${d.fullName}?`)) return;
+  try { await adminApi.deleteDoctor(d.userId); await fetchData(); } catch (e) { notifier.error(e.message); }
 };
 
 const formatPrice = (p) => p ? new Intl.NumberFormat('vi-VN').format(p) : '0';

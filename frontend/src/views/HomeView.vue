@@ -63,8 +63,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import api from '../api/axios';
+import { useContainer } from '../core/container';
 import DoctorCard from '../components/DoctorCard.vue';
+
+const { facade } = useContainer();
 
 const specialties = ref([]);
 const doctors = ref([]);
@@ -74,12 +76,9 @@ const loading = ref(true);
 
 onMounted(async () => {
   try {
-    const [specRes, docRes] = await Promise.all([
-      api.get('/api/specialties'),
-      api.get('/api/doctors')
-    ]);
-    if (specRes.status === 200) specialties.value = specRes.data;
-    if (docRes.status === 200) doctors.value = docRes.data;
+    const data = await facade.loadHome();
+    specialties.value = data.specialties;
+    doctors.value = data.doctors;
   } catch (err) {
     console.error('Failed to load data:', err);
   } finally {
@@ -91,13 +90,7 @@ const filterSpecialty = async (specialtyId) => {
   selectedSpecialty.value = specialtyId;
   loading.value = true;
   try {
-    if (specialtyId === null) {
-      const res = await api.get('/api/doctors');
-      if (res.status === 200) doctors.value = res.data;
-    } else {
-      const res = await api.get(`/api/doctors/specialty/${specialtyId}`);
-      if (res.status === 200) doctors.value = res.data;
-    }
+    doctors.value = await facade.listDoctors(specialtyId);
   } catch (err) {
     console.error(err);
   } finally {

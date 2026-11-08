@@ -8,6 +8,9 @@ RUN npm ci
 
 # Copy source code và build
 COPY . .
+# stripe (mặc định) | mock (demo/test khi chưa có khóa Stripe)
+ARG VITE_PAYMENT_MODE=stripe
+ENV VITE_PAYMENT_MODE=$VITE_PAYMENT_MODE
 RUN npm run build
 
 # Stage 2: Serve với Nginx

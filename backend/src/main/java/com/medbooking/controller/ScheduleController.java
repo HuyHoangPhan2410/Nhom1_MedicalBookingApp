@@ -33,7 +33,7 @@ public class ScheduleController {
         List<ScheduleResponse> schedules = scheduleService.getSchedulesByDoctor(doctorId, date);
         return ApiResponse.success(schedules);
     }
-
+ 
     @PostMapping
     public ApiResponse<ScheduleResponse> createSchedule(@RequestBody CreateScheduleRequest request) {
         ScheduleResponse response = scheduleService.createSchedule(request);

@@ -55,3 +55,21 @@ docker compose up --build -d
 ```
 
 OTP chỉ được lưu dưới dạng BCrypt hash, có hiệu lực 5 phút và được phép gửi lại tối đa 5 lần trong một giờ.
+
+
+## Bổ sung Design Patterns cho tiểu luận
+
+Phiên bản này được bổ sung **2 Creational (Builder, Factory Method)**,
+**2 Structural (Adapter, Facade)** và **2 Behavioral (Strategy, Observer)**.
+
+- Tài liệu phân tích và hướng dẫn demo: [`docs/design-patterns/README.md`](docs/design-patterns/README.md)
+- 12 sơ đồ lớp/tuần tự PlantUML: [`docs/design-patterns/`](docs/design-patterns/)
+- Kiểm thử Java/Mockito mới: `backend/src/test/java/com/medbooking/patterns/`
+- API mới: `GET /api/appointments/{id}/overview` và
+  `POST /api/payments/prepare?appointmentId={id}&method=cash|card`.
+
+**Trạng thái kiểm thử:** Builder đã vượt qua phép thử Java 21 độc lập;
+bộ Maven/JUnit chưa được chạy đầy đủ trong môi trường tạo bản ZIP (không tải được Maven).
+Vui lòng chạy `cd backend && ./mvnw test` hoặc `mvnw.cmd test` trên máy
+có Java 21 và kết nối Maven Central. Không dùng luồng xác nhận thanh toán thẻ
+trong production trước khi bổ sung Stripe webhook xác thực phía máy chủ.

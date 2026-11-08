@@ -64,7 +64,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+
+const { adminApi, notifier } = useContainer();
 
 const users = ref([]);
 const specialties = ref([]);
@@ -77,8 +79,8 @@ const form = ref(emptyForm());
 
 const fetchData = async () => {
   const [userRes, specialtyRes] = await Promise.all([
-    api.get('/api/admin/users'),
-    api.get('/api/admin/specialties')
+    adminApi.listUsers(),
+    adminApi.listSpecialties()
   ]);
   if (userRes.status === 200) users.value = userRes.data;
   if (specialtyRes.status === 200) specialties.value = specialtyRes.data;
@@ -94,7 +96,7 @@ const openEdit = async (u) => {
   if (u.role !== 'doctor') return;
 
   try {
-    const res = await api.get(`/api/admin/doctors/${u.id}`);
+    const res = await adminApi.getDoctor(u.id);
     if (res.status === 200) {
       form.value.fullName = res.data.fullName;
       form.value.specialtyId = String(res.data.specialtyId);
@@ -108,7 +110,7 @@ const openEdit = async (u) => {
   }
 
   try {
-    const patientRes = await api.get(`/api/admin/patients/${u.id}`);
+    const patientRes = await adminApi.getPatient(u.id);
     if (patientRes.status === 200) form.value.fullName = patientRes.data.fullName || '';
   } catch (_) {
     // Admin can enter the doctor name manually.
@@ -135,9 +137,9 @@ const handleSave = async () => {
       });
     }
     if (editingId.value) {
-      await api.put(`/api/admin/users/${editingId.value}`, payload);
+      await adminApi.updateUser(editingId.value, payload);
     } else {
-      await api.post('/api/admin/users', payload);
+      await adminApi.createUser(payload);
     }
     showModal.value = false;
     await fetchData();
@@ -149,13 +151,13 @@ const handleSave = async () => {
 };
 
 const toggleActive = async (u) => {
-  await api.put(`/api/admin/users/${u.id}`, { isActive: String(!u.isActive) });
+  await adminApi.updateUser(u.id, { isActive: String(!u.isActive) });
   await fetchData();
 };
 
 const handleDelete = async (u) => {
-  if (!confirm(`Xóa tài khoản ${u.email}?`)) return;
-  try { await api.delete(`/api/admin/users/${u.id}`); await fetchData(); } catch (e) { alert(e.message); }
+  if (!notifier.confirm(`Xóa tài khoản ${u.email}?`)) return;
+  try { await adminApi.deleteUser(u.id); await fetchData(); } catch (e) { notifier.error(e.message); }
 };
 </script>
 

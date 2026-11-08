@@ -92,8 +92,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import api from '../api/axios';
+import { useContainer } from '../core/container';
 
+const { facade } = useContainer();
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
@@ -124,12 +125,7 @@ const fetchSchedulesForDate = async () => {
   loadingSchedules.value = true;
   selectedSchedule.value = null;
   try {
-    const res = await api.get(`/api/schedules/doctor/${doctor.value.userId}`, {
-      params: { date: selectedDate.value }
-    });
-    if (res.status === 200) {
-      schedules.value = res.data;
-    }
+    schedules.value = await facade.listSchedules(doctor.value.userId, selectedDate.value);
   } catch (err) {
     console.error(err);
   } finally {
@@ -138,13 +134,9 @@ const fetchSchedulesForDate = async () => {
 };
 
 onMounted(async () => {
-  const doctorId = route.params.id;
   try {
-    const docRes = await api.get(`/api/doctors/${doctorId}`);
-    if (docRes.status === 200) {
-      doctor.value = docRes.data;
-      await fetchSchedulesForDate();
-    }
+    doctor.value = await facade.getDoctor(route.params.id);
+    await fetchSchedulesForDate();
   } catch (err) {
     console.error(err);
   } finally {
@@ -166,16 +158,13 @@ const handleBook = async () => {
   errorMsg.value = '';
 
   try {
-    const res = await api.post('/api/appointments', {
+    await facade.bookAppointment({
       patientId: authStore.user.userId,
       doctorId: doctor.value.userId,
-      scheduleId: selectedSchedule.value.id,
+      scheduleId: selectedSchedule.value?.id,
       symptoms: symptoms.value
     });
-
-    if (res.status === 200) {
-      router.push('/profile');
-    }
+    router.push('/profile');
   } catch (err) {
     errorMsg.value = err.message;
   } finally {
