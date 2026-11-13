@@ -2,6 +2,11 @@ package com.medbooking.service.impl;
 
 import com.medbooking.dto.request.BookAppointmentRequest;
 import com.medbooking.dto.response.AppointmentResponse;
+import com.medbooking.dto.response.CancellationPreviewResponse;
+import com.medbooking.entity.Payment;
+import com.medbooking.patterns.cancellation.CancellationAdvisor;
+import com.medbooking.patterns.cancellation.state.AppointmentLifecycle;
+import com.medbooking.repository.PaymentRepository;
 import com.medbooking.entity.Appointment;
 import com.medbooking.event.AppointmentBookedEvent;
 import com.medbooking.exception.BusinessException;
@@ -12,24 +17,35 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * Service thực hiện các nghiệp vụ quản lý và đặt lịch hẹn khám bệnh.
- * Sử dụng Stored Procedures dưới MySQL để đảm bảo an toàn giao dịch và chống overbooking.
+ * Đặt/đổi lịch dùng Stored Procedure chống overbooking; hủy lịch dùng giao dịch JPA có khóa hàng.
  */
 @Service
 public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PaymentRepository paymentRepository;
+    private final CancellationAdvisor cancellationAdvisor;
+    private final Clock clock;
 
     public AppointmentServiceImpl(AppointmentRepository appointmentRepository,
-                                  ApplicationEventPublisher eventPublisher) {
+                                  ApplicationEventPublisher eventPublisher,
+                                  PaymentRepository paymentRepository,
+                                  CancellationAdvisor cancellationAdvisor,
+                                  Clock clock) {
         this.appointmentRepository = appointmentRepository;
         this.eventPublisher = eventPublisher;
+        this.paymentRepository = paymentRepository;
+        this.cancellationAdvisor = cancellationAdvisor;
+        this.clock = clock;
     }
 
     /**
@@ -95,28 +111,66 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .collect(Collectors.toList());
     }
 
+    /** Read-only advice: State + rule chain + decorated refund estimate. */
+    @Override
+    @Transactional(readOnly = true)
+    public CancellationPreviewResponse previewCancellation(Integer id) {
+        Appointment appointment = appointmentRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(404, "Lịch hẹn không tồn tại"));
+        Payment payment = paymentRepository.findByAppointmentId(id).orElse(null);
+        return cancellationAdvisor.advise(appointment, payment, LocalDateTime.now(clock));
+    }
+
     /**
-     * Hủy lịch hẹn khám bệnh.
-     * Gọi Stored Procedure sp_CancelAppointment để cập nhật trạng thái lịch hẹn và hóa đơn thanh toán.
+     * Re-evaluate rules under row locks; a preview never authorizes a later cancellation.
+     * Do not call the legacy self-committing procedure here: validation and updates
+     * must share this JPA transaction. No real gateway refund is executed.
      */
     @Override
     @Transactional
     public AppointmentResponse cancelAppointment(Integer id) {
-        // Gọi Stored Procedure hủy lịch
-        Map<String, Object> resultMap = appointmentRepository.spCancelAppointment(id, "patient");
-
-        Object isSuccessObj = resultMap.get("p_is_success");
-        String message = (String) resultMap.get("p_message");
-
-        boolean isSuccess = Boolean.TRUE.equals(isSuccessObj) || (isSuccessObj instanceof Number && ((Number) isSuccessObj).intValue() == 1);
-
-        if (!isSuccess) {
-            throw new BusinessException(400, message != null ? message : "Hủy lịch hẹn thất bại");
-        }
-
-        Appointment appointment = appointmentRepository.findById(id)
+        Appointment appointment = appointmentRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new BusinessException(404, "Lịch hẹn không tồn tại"));
+        Payment payment = paymentRepository.findByAppointmentIdForUpdate(id).orElse(null);
+        CancellationPreviewResponse preview = cancellationAdvisor.advise(
+                appointment, payment, LocalDateTime.now(clock));
+        if (!preview.allowed()) throw new BusinessException(400, preview.reason());
 
+        AppointmentLifecycle lifecycle = AppointmentLifecycle.of(appointment);
+        lifecycle.cancel();
+        appointment.setStatus(lifecycle.status());
+        // Unpaid invoices can no longer be paid. Keep successful payments as history:
+        // cancelling an appointment is NOT evidence of a failed charge or a refund.
+        if (payment != null && payment.getStatus() == Payment.Status.pending) {
+            payment.setStatus(Payment.Status.failed);
+            paymentRepository.save(payment);
+        }
+        appointmentRepository.save(appointment);
+        return mapToResponse(appointment);
+    }
+
+    /** Admin uses the same State transitions; cancellation cannot bypass the chain. */
+    @Override
+    @Transactional
+    public AppointmentResponse updateStatus(Integer id, String status) {
+        Appointment.Status target;
+        try {
+            target = Appointment.Status.valueOf(status == null ? "" : status);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(400, "Trạng thái lịch hẹn không hợp lệ");
+        }
+        if (target == Appointment.Status.cancelled) return cancelAppointment(id);
+
+        Appointment appointment = appointmentRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BusinessException(404, "Lịch hẹn không tồn tại"));
+        AppointmentLifecycle lifecycle = AppointmentLifecycle.of(appointment);
+        switch (target) {
+            case confirmed -> lifecycle.confirm();
+            case completed -> lifecycle.complete();
+            default -> throw new BusinessException(400, "Không thể chuyển lịch hẹn về trạng thái chờ thanh toán");
+        }
+        appointment.setStatus(lifecycle.status());
+        appointmentRepository.save(appointment);
         return mapToResponse(appointment);
     }
 
@@ -127,7 +181,12 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional
     public AppointmentResponse rescheduleAppointment(Integer id, Integer newScheduleId) {
-        // Gọi Stored Procedure đổi lịch
+        Appointment current = appointmentRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(404, "Lịch hẹn không tồn tại"));
+        if (!AppointmentLifecycle.of(current).canReschedule()) {
+            throw new BusinessException(400, "Lịch hẹn đã hủy hoặc hoàn thành, không thể đổi lịch");
+        }
+        // The procedure rechecks the status under its own database lock.
         Map<String, Object> resultMap = appointmentRepository.spRescheduleAppointment(id, newScheduleId);
 
         Object isSuccessObj = resultMap.get("p_is_success");
@@ -145,9 +204,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         return mapToResponse(appointment);
     }
 
-    /**
-     * Chuyển đổi từ Entity Appointment sang DTO AppointmentResponse.
-     */
+    /** Publishes the immutable booking snapshot for the existing Observer. */
     private void publishBookingConfirmation(Appointment appointment) {
         if (appointment.getPatient().getUser() == null
                 || !StringUtils.hasText(appointment.getPatient().getUser().getEmail())) {
@@ -182,7 +239,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         res.setWorkDate(app.getSchedule().getWorkDate());
         res.setStartTime(app.getSchedule().getStartTime());
         res.setEndTime(app.getSchedule().getEndTime());
-        res.setStatus(app.getStatus().name());
+        AppointmentLifecycle lifecycle = AppointmentLifecycle.of(app);
+        res.setStatus(lifecycle.status().name());
+        res.setCanCancel(lifecycle.canCancel());
+        res.setCanReschedule(lifecycle.canReschedule());
+        res.setCancelBlockedReason(lifecycle.cancelBlockedReason());
         res.setSymptoms(app.getSymptoms());
         res.setCreatedAt(app.getCreatedAt());
         return res;

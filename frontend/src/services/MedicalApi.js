@@ -30,6 +30,7 @@ export class MedicalApi {
 
   // ----- Appointments / Patients -----
   bookAppointment(body) { return this.http.post('/api/appointments', body).then((r) => this.#unwrap(r)); }
+  previewCancellation(id) { return this.http.get(`/api/appointments/${id}/cancellation-preview`).then((r) => this.#unwrap(r)); }
   cancelAppointment(id) { return this.http.put(`/api/appointments/${id}/cancel`).then((r) => this.#unwrap(r)); }
   rescheduleAppointment(id, newScheduleId) {
     return this.http.put(`/api/appointments/${id}/reschedule`, null, { params: { newScheduleId } }).then((r) => this.#unwrap(r));

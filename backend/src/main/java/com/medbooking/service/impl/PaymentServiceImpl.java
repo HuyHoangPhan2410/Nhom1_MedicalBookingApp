@@ -3,6 +3,8 @@ package com.medbooking.service.impl;
 import com.medbooking.dto.request.ConfirmPaymentRequest;
 import com.medbooking.dto.response.PaymentResponse;
 import com.medbooking.entity.Payment;
+import com.medbooking.entity.Appointment;
+import com.medbooking.patterns.cancellation.state.AppointmentLifecycle;
 import com.medbooking.exception.BusinessException;
 import com.medbooking.patterns.payment.PaymentPreparationStrategyRegistry;
 import com.medbooking.repository.AppointmentRepository;
@@ -11,6 +13,8 @@ import com.medbooking.service.PaymentService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Map;
 
@@ -19,34 +23,47 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final AppointmentRepository appointmentRepository;
     private final PaymentPreparationStrategyRegistry strategyRegistry;
+    private final Clock clock;
 
     @Value("${stripe.publishable-key:}")
     private String stripePublishableKey;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               AppointmentRepository appointmentRepository,
-                              PaymentPreparationStrategyRegistry strategyRegistry) {
+                              PaymentPreparationStrategyRegistry strategyRegistry,
+                              Clock clock) {
         this.paymentRepository = paymentRepository;
         this.appointmentRepository = appointmentRepository;
         this.strategyRegistry = strategyRegistry;
+        this.clock = clock;
     }
 
     @Override
     @Transactional
     public PaymentResponse confirmPayment(ConfirmPaymentRequest request) {
-        // The DB procedure expects exactly the supported enum values.
         Payment.PaymentMethod paymentMethod = parseMethod(request.getPaymentMethod());
-        Map<String, Object> resultMap = appointmentRepository.spConfirmPayment(
-                request.getAppointmentId(), paymentMethod.name());
-        Object isSuccessObj = resultMap.get("p_is_success");
-        String message = (String) resultMap.get("p_message");
-        boolean isSuccess = Boolean.TRUE.equals(isSuccessObj)
-                || (isSuccessObj instanceof Number && ((Number) isSuccessObj).intValue() == 1);
-        if (!isSuccess) {
-            throw new BusinessException(400, message != null ? message : "Xác nhận thanh toán thất bại");
-        }
-        Payment payment = paymentRepository.findByAppointmentId(request.getAppointmentId())
+        // Use the same lock order as cancellation. The legacy procedure self-COMMITs
+        // and could revive a completed appointment, bypassing its State.
+        Appointment appointment = appointmentRepository.findByIdForUpdate(request.getAppointmentId())
+                .orElseThrow(() -> new BusinessException(404, "Lịch hẹn không tồn tại"));
+        Payment payment = paymentRepository.findByAppointmentIdForUpdate(request.getAppointmentId())
                 .orElseThrow(() -> new BusinessException(404, "Không tìm thấy thông tin hóa đơn thanh toán"));
+        AppointmentLifecycle lifecycle = AppointmentLifecycle.of(appointment);
+        // Already-confirmed active appointments may settle an unpaid invoice.
+        // All other states delegate the requested transition to their State object.
+        if (lifecycle.status() != Appointment.Status.confirmed) lifecycle.confirm();
+        if (payment.getStatus() == Payment.Status.failed) {
+            throw new BusinessException(400, "Không thể xác nhận hóa đơn đã thất bại");
+        }
+        // Idempotent confirmation must not change method, paidAt or appointment status.
+        if (payment.getStatus() == Payment.Status.success) return mapToResponse(payment);
+
+        appointment.setStatus(lifecycle.status());
+        payment.setStatus(Payment.Status.success);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setPaidAt(LocalDateTime.now(clock));
+        appointmentRepository.save(appointment);
+        paymentRepository.save(payment);
         return mapToResponse(payment);
     }
 

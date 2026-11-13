@@ -30,7 +30,7 @@ class PaymentServicePatternIntegrationTest {
         when(payments.findByAppointmentId(12)).thenReturn(Optional.of(payment));
         PaymentPreparationStrategyRegistry registry = new PaymentPreparationStrategyRegistry(
                 List.of(new CashPaymentPreparationStrategy()));
-        PaymentServiceImpl service = new PaymentServiceImpl(payments, appointments, registry);
+        PaymentServiceImpl service = new PaymentServiceImpl(payments, appointments, registry, java.time.Clock.systemUTC());
         Map<String, Object> response = service.preparePayment(12, "cash");
         assertEquals("cash", response.get("paymentMethod"));
         verify(payments, never()).save(any());

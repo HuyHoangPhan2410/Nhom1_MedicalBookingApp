@@ -56,6 +56,8 @@ export class BookingFacade {
     return result;
   }
 
+  previewCancellation(appointmentId) { return this.api.previewCancellation(appointmentId); }
+
   async cancelAppointment(appointmentId) {
     const result = await this.api.cancelAppointment(appointmentId);
     this.bus.publish(EVENTS.APPOINTMENT_CANCELLED, { appointmentId });

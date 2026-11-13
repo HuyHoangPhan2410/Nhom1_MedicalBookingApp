@@ -65,6 +65,12 @@
       </div>
     </div>
 
+    <CancellationPreviewModal
+      v-if="showCancellationModal"
+      :appointment="selectedAppointment"
+      @close="showCancellationModal = false"
+    />
+
     <!-- Payment Modal -->
     <PaymentModal 
       v-if="showPaymentModal" 
@@ -89,14 +95,16 @@ import { EVENTS } from '../patterns/behavioral/EventBus';
 import AppointmentCard from '../components/AppointmentCard.vue';
 import PaymentModal from '../components/PaymentModal.vue';
 import RescheduleModal from '../components/RescheduleModal.vue';
+import CancellationPreviewModal from '../components/CancellationPreviewModal.vue';
 
-const { facade, bus, notifier } = useContainer();
+const { facade, bus } = useContainer();
 const authStore = useAuthStore();
 const patient = ref(null);
 const appointments = ref([]);
 const activeFilter = ref('all');
 const loading = ref(true);
 
+const showCancellationModal = ref(false);
 const showPaymentModal = ref(false);
 const showRescheduleModal = ref(false);
 const selectedAppointment = ref(null);
@@ -139,13 +147,9 @@ const openRescheduleModal = (app) => {
   showRescheduleModal.value = true;
 };
 
-const handleCancel = async (appointmentId) => {
-  if (!notifier.confirm('Bạn có chắc chắn muốn hủy lịch hẹn này?')) return;
-  try {
-    await facade.cancelAppointment(appointmentId);
-  } catch (err) {
-    notifier.error(err.message);
-  }
+const handleCancel = (appointmentId) => {
+  selectedAppointment.value = appointments.value.find(app => app.id === appointmentId);
+  if (selectedAppointment.value) showCancellationModal.value = true;
 };
 
 const formatGender = (gender) => {

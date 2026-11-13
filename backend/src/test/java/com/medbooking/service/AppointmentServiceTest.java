@@ -12,7 +12,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+import org.junit.jupiter.api.BeforeEach;
+import com.medbooking.patterns.cancellation.CancellationAdvisor;
+import com.medbooking.repository.PaymentRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -25,8 +30,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,8 +45,17 @@ class AppointmentServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
-    @InjectMocks
+    @Mock
+    private PaymentRepository paymentRepository;
+
     private AppointmentServiceImpl appointmentService;
+
+    @BeforeEach
+    void setUp() {
+        appointmentService = new AppointmentServiceImpl(appointmentRepository, eventPublisher,
+                paymentRepository, new CancellationAdvisor(),
+                Clock.fixed(Instant.parse("2026-11-12T00:00:00Z"), ZoneId.of("Asia/Ho_Chi_Minh")));
+    }
 
     @Test
     @DisplayName("Kiểm thử đặt lịch hẹn thành công khi ca khám còn trống")
@@ -67,6 +79,8 @@ class AppointmentServiceTest {
 
         assertNotNull(response, "Kết quả phản hồi không được null");
         assertEquals(100, response.getId(), "Mã lịch hẹn phải là 100");
+        assertTrue(response.isCanCancel());
+        assertTrue(response.isCanReschedule());
         assertEquals("Nguyễn Văn A", response.getPatientName(), "Tên bệnh nhân phải trùng khớp");
 
         ArgumentCaptor<AppointmentBookedEvent> eventCaptor = ArgumentCaptor.forClass(AppointmentBookedEvent.class);
@@ -96,20 +110,17 @@ class AppointmentServiceTest {
     @Test
     @DisplayName("Kiểm thử hủy lịch hẹn khám thành công")
     void testCancelAppointment_Success() {
-        Map<String, Object> procResult = new HashMap<>();
-        procResult.put("p_is_success", 1);
-        procResult.put("p_message", "Hủy thành công");
-
-        when(appointmentRepository.spCancelAppointment(anyInt(), anyString())).thenReturn(procResult);
-
         Appointment app = createDummyAppointment(100, 1, 2);
-        app.setStatus(Appointment.Status.cancelled);
-        when(appointmentRepository.findById(100)).thenReturn(Optional.of(app));
+        app.getSchedule().setWorkDate(LocalDate.of(2026, 11, 13));
+        when(appointmentRepository.findByIdForUpdate(100)).thenReturn(Optional.of(app));
 
         AppointmentResponse response = appointmentService.cancelAppointment(100);
 
         assertNotNull(response);
         assertEquals("cancelled", response.getStatus());
+        assertFalse(response.isCanCancel());
+        assertFalse(response.isCanReschedule());
+        verify(appointmentRepository).save(app);
     }
 
     @Test
