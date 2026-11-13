@@ -39,7 +39,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import api from '../api/axios';
+import { useContainer } from '../core/container';
 
 const props = defineProps({
   appointment: {
@@ -48,7 +48,8 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'success']);
+const emit = defineEmits(['close']);
+const { facade } = useContainer();
 
 const schedules = ref([]);
 const selectedScheduleId = ref(null);
@@ -57,11 +58,8 @@ const errorMsg = ref('');
 
 onMounted(async () => {
   try {
-    const res = await api.get(`/api/schedules/doctor/${props.appointment.doctorId}`);
-    if (res.status === 200) {
-      // Bỏ ca hiện tại
-      schedules.value = res.data.filter(s => s.id !== props.appointment.scheduleId);
-    }
+    // Bỏ ca hiện tại
+    schedules.value = await facade.listReschedulable(props.appointment);
   } catch (err) {
     errorMsg.value = err.message;
   } finally {
@@ -74,13 +72,8 @@ const handleConfirm = async () => {
   loading.value = true;
   errorMsg.value = '';
   try {
-    const res = await api.put(`/api/appointments/${props.appointment.id}/reschedule`, null, {
-      params: { newScheduleId: selectedScheduleId.value }
-    });
-    if (res.status === 200) {
-      emit('success');
-      emit('close');
-    }
+    await facade.rescheduleAppointment(props.appointment.id, selectedScheduleId.value);
+    emit('close');
   } catch (err) {
     errorMsg.value = err.message;
   } finally {

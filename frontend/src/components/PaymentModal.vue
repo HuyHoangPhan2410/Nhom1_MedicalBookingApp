@@ -44,14 +44,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
-import api from '../api/axios';
-import { loadStripe } from '@stripe/stripe-js';
+import { ref, watch, nextTick } from 'vue';
+import { useContainer } from '../core/container';
 
 const props = defineProps({
   appointment: { type: Object, required: true }
 });
-const emit = defineEmits(['close', 'success']);
+const emit = defineEmits(['close']);
+const { facade } = useContainer();
 
 const selectedMethod = ref('cash');
 const loading = ref(false);
@@ -59,30 +59,17 @@ const errorMsg = ref('');
 const successMsg = ref('');
 const cardElementRef = ref(null);
 
-let stripe = null;
-let cardElement = null;
-
-// ✅ Khởi tạo Stripe khi chọn "card"
-watch(selectedMethod, async (val) => {
-  if (val === 'card' && !stripe) {
-    try {
-      const configRes = await api.get('/api/payments/stripe-config');
-      const pk = configRes.data?.publishableKey;
-      if (pk && pk !== 'pk_test_placeholder') {
-        stripe = await loadStripe(pk);
-        const elements = stripe.elements();
-        cardElement = elements.create('card', {
-          style: {
-            base: { fontSize: '16px', color: '#0f172a', '::placeholder': { color: '#94a3b8' } }
-          }
-        });
-        cardElement.mount(cardElementRef.value);
-      } else {
-        errorMsg.value = 'Stripe chưa được cấu hình. Vui lòng chọn Tiền mặt.';
-      }
-    } catch (e) {
-      errorMsg.value = 'Không thể tải Stripe. Vui lòng thử lại.';
-    }
+// Strategy + Adapter: modal không biết Stripe; chỉ hỏi Facade chuẩn bị phương thức đã chọn.
+watch(selectedMethod, async (method) => {
+  errorMsg.value = '';
+  const state = await facade.preparePaymentMethod(method);
+  if (!state.ready) {
+    errorMsg.value = state.message;
+    return;
+  }
+  if (method === 'card') {
+    await nextTick();
+    facade.mountCardInput(cardElementRef.value);
   }
 });
 
@@ -92,44 +79,9 @@ const handleConfirm = async () => {
   successMsg.value = '';
 
   try {
-    if (selectedMethod.value === 'card') {
-      // Bước 1: Tạo PaymentIntent
-      const intentRes = await api.post(`/api/payments/create-intent`, null, {
-        params: { appointmentId: props.appointment.id }
-      });
-      const clientSecret = intentRes.data?.clientSecret;
-
-      if (!clientSecret) throw new Error('Không tạo được PaymentIntent');
-
-      // Bước 2: Confirm với Stripe
-      const { error } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: { card: cardElement }
-      });
-
-      if (error) throw new Error(error.message);
-
-      // Bước 3: Xác nhận với backend
-      const res = await api.post('/api/payments/confirm', {
-        appointmentId: props.appointment.id,
-        paymentMethod: 'card'
-      });
-
-      if (res.status === 200) {
-        successMsg.value = 'Thanh toán thẻ thành công!';
-        setTimeout(() => { emit('success'); emit('close'); }, 1500);
-      }
-    } else {
-      // Tiền mặt: gọi confirm trực tiếp
-      const res = await api.post('/api/payments/confirm', {
-        appointmentId: props.appointment.id,
-        paymentMethod: 'cash'
-      });
-
-      if (res.status === 200) {
-        successMsg.value = 'Đã xác nhận thanh toán tiền mặt!';
-        setTimeout(() => { emit('success'); emit('close'); }, 1500);
-      }
-    }
+    const result = await facade.pay(props.appointment.id, selectedMethod.value);
+    successMsg.value = result.message;
+    setTimeout(() => emit('close'), 1500);
   } catch (err) {
     errorMsg.value = err.message;
   } finally {

@@ -57,7 +57,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import api from '../api/axios';
+import { useContainer } from '../core/container';
 
 const props = defineProps({
   schedule: {
@@ -66,7 +66,8 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'success']);
+const emit = defineEmits(['close']);
+const { facade } = useContainer();
 const authStore = useAuthStore();
 
 const loading = ref(false);
@@ -89,22 +90,14 @@ const handleSubmit = async () => {
   loading.value = true;
   errorMsg.value = '';
 
-  const formattedStartTime = startTime.value.length === 5 ? `${startTime.value}:00` : startTime.value;
-  const formattedEndTime = endTime.value.length === 5 ? `${endTime.value}:00` : endTime.value;
-
   try {
-    const res = await api.put(`/api/schedules/${props.schedule.id}`, {
-      doctorId: authStore.user.userId,
+    await facade.updateSchedule(props.schedule.id, authStore.user.userId, {
       workDate: workDate.value,
-      startTime: formattedStartTime,
-      endTime: formattedEndTime,
+      startTime: startTime.value,
+      endTime: endTime.value,
       maxPatients: maxPatients.value
     });
-
-    if (res.status === 200) {
-      emit('success');
-      emit('close');
-    }
+    emit('close');
   } catch (err) {
     errorMsg.value = err.message;
   } finally {

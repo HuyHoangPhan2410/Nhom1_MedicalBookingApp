@@ -25,30 +25,36 @@
           <td>{{ a.startTime }} - {{ a.endTime }}</td>
           <td><span :class="['badge', 'badge-' + a.status]">{{ statusText(a.status) }}</span></td>
           <td class="actions">
-            <select @change="updateStatus(a.id, $event.target.value)" class="status-select">
+            <select v-if="a.canCancel || a.canReschedule" @change="updateStatus(a.id, $event.target.value); $event.target.value = ''" class="status-select">
               <option value="">Đổi trạng thái...</option>
-              <option value="pending">Chờ TT</option>
-              <option value="confirmed">Xác nhận</option>
-              <option value="completed">Hoàn thành</option>
+              <option v-if="a.status === 'pending'" value="confirmed">Xác nhận</option>
+              <option v-if="a.status === 'confirmed'" value="completed">Hoàn thành</option>
               <option value="cancelled">Hủy</option>
             </select>
+            <span v-else class="terminal-note">Đã kết thúc</span>
           </td>
         </tr>
       </tbody>
     </table>
     <div v-else class="empty-state">Không có lịch hẹn nào.</div>
+    <CancellationPreviewModal v-if="cancellationAppointment" :appointment="cancellationAppointment"
+      @close="cancellationAppointment = null" @success="fetchAppointments" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+import CancellationPreviewModal from '../../components/CancellationPreviewModal.vue';
+
+const { adminApi, notifier } = useContainer();
 
 const appointments = ref([]);
 const filter = ref('all');
+const cancellationAppointment = ref(null);
 
 const fetchAppointments = async () => {
-  const res = await api.get('/api/admin/appointments');
+  const res = await adminApi.listAppointments();
   if (res.status === 200) appointments.value = res.data;
 };
 onMounted(fetchAppointments);
@@ -60,10 +66,14 @@ const filtered = computed(() => {
 
 const updateStatus = async (id, status) => {
   if (!status) return;
+  if (status === 'cancelled') {
+    cancellationAppointment.value = appointments.value.find(a => a.id === id);
+    return;
+  }
   try {
-    await api.put(`/api/admin/appointments/${id}/status`, { status });
+    await adminApi.updateAppointmentStatus(id, status);
     await fetchAppointments();
-  } catch (e) { alert(e.message); }
+  } catch (e) { notifier.error(e.message); }
 };
 
 const statusText = (s) => ({ pending: 'Chờ TT', confirmed: 'Xác nhận', cancelled: 'Đã hủy', completed: 'Hoàn thành' }[s] || s);

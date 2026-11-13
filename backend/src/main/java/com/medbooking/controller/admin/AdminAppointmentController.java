@@ -3,7 +3,8 @@ package com.medbooking.controller.admin;
 import com.medbooking.dto.response.ApiResponse;
 import com.medbooking.dto.response.AppointmentResponse;
 import com.medbooking.entity.Appointment;
-import com.medbooking.exception.BusinessException;
+import com.medbooking.service.AppointmentService;
+import com.medbooking.patterns.cancellation.state.AppointmentLifecycle;
 import com.medbooking.repository.AppointmentRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -19,8 +20,11 @@ public class AdminAppointmentController {
 
     private final AppointmentRepository appointmentRepository;
 
-    public AdminAppointmentController(AppointmentRepository appointmentRepository) {
+    private final AppointmentService appointmentService;
+
+    public AdminAppointmentController(AppointmentRepository appointmentRepository, AppointmentService appointmentService) {
         this.appointmentRepository = appointmentRepository;
+        this.appointmentService = appointmentService;
     }
 
     @GetMapping
@@ -34,14 +38,8 @@ public class AdminAppointmentController {
     @PutMapping("/{id}/status")
     public ApiResponse<AppointmentResponse> updateStatus(@PathVariable Integer id,
                                                           @RequestBody Map<String, String> body) {
-        Appointment app = appointmentRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "Lịch hẹn không tồn tại"));
-
-        String newStatus = body.get("status");
-        app.setStatus(Appointment.Status.valueOf(newStatus));
-        appointmentRepository.save(app);
-
-        return ApiResponse.success("Cập nhật trạng thái thành công", mapToResponse(app));
+        return ApiResponse.success("Cập nhật trạng thái thành công",
+                appointmentService.updateStatus(id, body.get("status")));
     }
 
     private AppointmentResponse mapToResponse(Appointment app) {
@@ -56,7 +54,11 @@ public class AdminAppointmentController {
         res.setWorkDate(app.getSchedule().getWorkDate());
         res.setStartTime(app.getSchedule().getStartTime());
         res.setEndTime(app.getSchedule().getEndTime());
-        res.setStatus(app.getStatus().name());
+        AppointmentLifecycle lifecycle = AppointmentLifecycle.of(app);
+        res.setStatus(lifecycle.status().name());
+        res.setCanCancel(lifecycle.canCancel());
+        res.setCanReschedule(lifecycle.canReschedule());
+        res.setCancelBlockedReason(lifecycle.cancelBlockedReason());
         res.setSymptoms(app.getSymptoms());
         res.setCreatedAt(app.getCreatedAt());
         return res;

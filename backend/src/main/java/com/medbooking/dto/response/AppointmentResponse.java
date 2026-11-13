@@ -16,6 +16,10 @@ public class AppointmentResponse {
     private LocalTime startTime;
     private LocalTime endTime;
     private String status;
+    // State-level capabilities only. Time policy is evaluated by /cancellation-preview.
+    private boolean canCancel;
+    private boolean canReschedule;
+    private String cancelBlockedReason;
     private String symptoms;
     private LocalDateTime createdAt;
 
@@ -108,6 +112,13 @@ public class AppointmentResponse {
     public void setStatus(String status) {
         this.status = status;
     }
+
+    public boolean isCanCancel() { return canCancel; }
+    public void setCanCancel(boolean canCancel) { this.canCancel = canCancel; }
+    public boolean isCanReschedule() { return canReschedule; }
+    public void setCanReschedule(boolean canReschedule) { this.canReschedule = canReschedule; }
+    public String getCancelBlockedReason() { return cancelBlockedReason; }
+    public void setCancelBlockedReason(String cancelBlockedReason) { this.cancelBlockedReason = cancelBlockedReason; }
 
     public String getSymptoms() {
         return symptoms;

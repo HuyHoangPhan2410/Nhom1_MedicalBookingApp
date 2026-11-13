@@ -103,6 +103,8 @@ public class AppointmentRepositoryCustomImpl implements AppointmentRepositoryCus
         Map<String, Object> result = new HashMap<>();
         result.put("p_is_success", query.getOutputParameterValue("p_is_success"));
         result.put("p_message", query.getOutputParameterValue("p_message"));
+        // The prechecked Appointment may still be managed with its old Schedule.
+        entityManager.clear();
         return result;
     }
 }

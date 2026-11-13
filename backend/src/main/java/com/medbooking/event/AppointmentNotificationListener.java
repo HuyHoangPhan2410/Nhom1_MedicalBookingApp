@@ -1,30 +1,32 @@
 package com.medbooking.event;
 
-import com.medbooking.service.AppointmentEmailService;
+import com.medbooking.patterns.notification.BookingNotificationCreator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+/** Observer: reacts to booking event after a successful DB transaction. */
 @Component
 public class AppointmentNotificationListener {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(AppointmentNotificationListener.class);
+    private final BookingNotificationCreator notificationCreator;
 
-    private final AppointmentEmailService appointmentEmailService;
-
-    public AppointmentNotificationListener(AppointmentEmailService appointmentEmailService) {
-        this.appointmentEmailService = appointmentEmailService;
+    public AppointmentNotificationListener(
+            @Qualifier("emailBookingNotificationCreator") BookingNotificationCreator notificationCreator) {
+        this.notificationCreator = notificationCreator;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleAppointmentBooked(AppointmentBookedEvent event) {
         try {
-            appointmentEmailService.sendBookingConfirmation(event);
+            // Factory Method chooses the concrete notification sender.
+            notificationCreator.notifyBooking(event);
         } catch (Exception ex) {
-            // Notification failures must not turn a committed booking into an API error.
-            LOGGER.warn("Kh\u00f4ng th\u1ec3 g\u1eedi email x\u00e1c nh\u1eadn cho l\u1ecbch h\u1eb9n {}: {}", event.appointmentId(), ex.getMessage());
+            // A committed appointment must not fail because mail delivery failed.
+            LOGGER.warn("Unable to send booking confirmation for {}: {}", event.appointmentId(), ex.getMessage());
         }
     }
 }

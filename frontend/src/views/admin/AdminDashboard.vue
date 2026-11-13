@@ -120,7 +120,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+
+const { adminApi, notifier } = useContainer();
 
 const router = useRouter();
 const stats = ref(null);
@@ -215,7 +217,7 @@ const overviewRows = computed(() => {
 
 onMounted(async () => {
   try {
-    const res = await api.get('/api/admin/dashboard');
+    const res = await adminApi.dashboard();
     if (res.status === 200) stats.value = res.data;
   } catch (e) { console.error(e); }
 });

@@ -11,5 +11,6 @@ public interface PaymentService {
 
     // ✅ Stripe
     Map<String, Object> createPaymentIntent(Integer appointmentId);
+    Map<String, Object> preparePayment(Integer appointmentId, String method);
     String getStripePublishableKey();
 }

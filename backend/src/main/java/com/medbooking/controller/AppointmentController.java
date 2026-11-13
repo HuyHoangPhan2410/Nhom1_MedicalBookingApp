@@ -4,6 +4,8 @@ import com.medbooking.dto.request.BookAppointmentRequest;
 import com.medbooking.dto.response.ApiResponse;
 import com.medbooking.dto.response.AppointmentResponse;
 import com.medbooking.service.AppointmentService;
+import com.medbooking.patterns.appointment.AppointmentOverviewFacade;
+import com.medbooking.dto.response.AppointmentOverviewResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -22,9 +24,11 @@ import java.util.List;
 public class AppointmentController {
 
     private final AppointmentService appointmentService;
+    private final AppointmentOverviewFacade overviewFacade;
 
-    public AppointmentController(AppointmentService appointmentService) {
+    public AppointmentController(AppointmentService appointmentService, AppointmentOverviewFacade overviewFacade) {
         this.appointmentService = appointmentService;
+        this.overviewFacade = overviewFacade;
     }
 
     @Operation(
@@ -51,6 +55,12 @@ public class AppointmentController {
     public ApiResponse<AppointmentResponse> getAppointmentById(@PathVariable Integer id) {
         AppointmentResponse response = appointmentService.getAppointmentById(id);
         return ApiResponse.success(response);
+    }
+
+    // Facade combines appointment and payment details for a single screen.
+    @GetMapping("/{id}/overview")
+    public ApiResponse<AppointmentOverviewResponse> getOverview(@PathVariable Integer id) {
+        return ApiResponse.success(overviewFacade.getOverview(id));
     }
 
     @GetMapping("/doctor/{doctorId}")

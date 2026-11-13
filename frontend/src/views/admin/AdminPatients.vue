@@ -53,7 +53,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+
+const { adminApi, notifier } = useContainer();
 
 const patients = ref([]);
 const showModal = ref(false);
@@ -62,7 +64,7 @@ const errorMsg = ref('');
 const form = ref({ fullName: '', email: '', password: '', phone: '', dob: '', gender: 'male', bloodType: '', address: '' });
 
 const fetchPatients = async () => {
-  const res = await api.get('/api/admin/patients');
+  const res = await adminApi.listPatients();
   if (res.status === 200) patients.value = res.data;
 };
 onMounted(fetchPatients);
@@ -74,9 +76,9 @@ const handleSave = async () => {
   errorMsg.value = '';
   try {
     if (editingId.value) {
-      await api.put(`/api/admin/patients/${editingId.value}`, form.value);
+      await adminApi.updatePatient(editingId.value, form.value);
     } else {
-      await api.post('/api/admin/patients', form.value);
+      await adminApi.createPatient(form.value);
     }
     showModal.value = false;
     await fetchPatients();
@@ -84,8 +86,8 @@ const handleSave = async () => {
 };
 
 const handleDelete = async (p) => {
-  if (!confirm(`Xóa bệnh nhân ${p.fullName}?`)) return;
-  try { await api.delete(`/api/admin/patients/${p.userId}`); await fetchPatients(); } catch (e) { alert(e.message); }
+  if (!notifier.confirm(`Xóa bệnh nhân ${p.fullName}?`)) return;
+  try { await adminApi.deletePatient(p.userId); await fetchPatients(); } catch (e) { notifier.error(e.message); }
 };
 </script>
 

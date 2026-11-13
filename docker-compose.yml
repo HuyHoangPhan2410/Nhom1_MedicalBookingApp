@@ -65,6 +65,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_PAYMENT_MODE: ${VITE_PAYMENT_MODE:-stripe}
     container_name: medbooking-frontend
     restart: unless-stopped
     ports:

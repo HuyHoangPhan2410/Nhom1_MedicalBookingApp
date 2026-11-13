@@ -26,7 +26,9 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import api from '../../api/axios';
+import { useContainer } from '../../core/container';
+
+const { adminApi, notifier } = useContainer();
 
 const router = useRouter();
 const email = ref('');
@@ -38,7 +40,7 @@ const handleLogin = async () => {
   loading.value = true;
   errorMsg.value = '';
   try {
-    const res = await api.post('/api/admin/auth/login', {
+    const res = await adminApi.login({
       email: email.value,
       password: password.value
     });

@@ -22,7 +22,8 @@
       </div>
     </div>
 
-    <div class="card-actions" v-if="appointment.status === 'pending' || appointment.status === 'confirmed'">
+    <p v-if="appointment.cancelBlockedReason" class="state-note">{{ appointment.cancelBlockedReason }}</p>
+    <div class="card-actions" v-if="appointment.status === 'pending' || appointment.canCancel || appointment.canReschedule">
       <button 
         v-if="appointment.status === 'pending'" 
         @click="$emit('pay', appointment)" 
@@ -32,7 +33,7 @@
       </button>
 
       <button 
-        v-if="appointment.status === 'pending' || appointment.status === 'confirmed'" 
+        v-if="appointment.canReschedule"
         @click="$emit('reschedule', appointment)" 
         class="btn btn-outline btn-sm"
       >
@@ -40,11 +41,11 @@
       </button>
 
       <button 
-        v-if="appointment.status === 'pending' || appointment.status === 'confirmed'" 
+        v-if="appointment.canCancel"
         @click="$emit('cancel', appointment.id)" 
         class="btn btn-danger btn-sm"
       >
-        Hủy Lịch
+        Xem Trước Hủy
       </button>
     </div>
   </div>
@@ -114,7 +115,10 @@ const getStatusText = (status) => {
   flex-shrink: 0;
 }
 
+.state-note { color: var(--text-secondary); font-size: .85rem; }
+
 .card-actions {
+  flex-wrap: wrap;
   display: flex;
   gap: 0.5rem;
   border-top: 1px solid var(--border-color);
